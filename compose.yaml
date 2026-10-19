@@ -1,0 +1,15 @@
+services:
+  billing:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      APP_ENV: development
+      DATA_DIR: /app/data
+      OWNER_EMAIL: ${OWNER_EMAIL:?Set OWNER_EMAIL privately}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:?Set OWNER_PASSWORD privately}
+    volumes:
+      - billing-data:/app/data
+    restart: unless-stopped
+volumes:
+  billing-data:

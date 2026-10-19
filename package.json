@@ -1,0 +1,13 @@
+{
+  "name": "svs-enterprises-billing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SVS Enterprises owner billing console. No frontend build or npm dependencies required.",
+  "scripts": {
+    "check": "node --check frontend/app.js && node --check frontend/core.js && node --check frontend/pages.js && node --check frontend/invoice.js"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
+  }
+}

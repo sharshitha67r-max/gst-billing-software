@@ -1,0 +1,23 @@
+# This blueprint creates a paid web service and a persistent disk.
+# Review Render's displayed charges before creating it.
+services:
+  - type: web
+    name: svs-enterprises-billing
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    disk:
+      name: billing-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATA_DIR
+        value: /app/data
+      - key: PORT
+        value: 8000
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false
