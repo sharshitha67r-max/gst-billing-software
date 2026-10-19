@@ -6,6 +6,8 @@ import {
   money,
   amount,
   today,
+  dateValue,
+  bindDates,
   debounce,
   icon,
   field,
@@ -143,8 +145,13 @@ export async function invoiceEditor(
     }));
   }
   function ready() {
+    try {
+      for (const input of $$("input[data-date]", root)) dateValue(input);
+    } catch {
+      return false;
+    }
     return (
-      !!doc.customer_id &&
+      (!!doc.customer_id || (!!doc.id && !!doc.customer_snapshot)) &&
       linesForSave().length > 0 &&
       linesForSave().every(
         (l) =>
@@ -247,9 +254,16 @@ export async function invoiceEditor(
         notify();
         $('[data-line="0"][data-field="description"]', root)?.focus();
       });
+    bindDates(root);
     for (const key of ["invoice_date", "due_date", "terms", "notes"])
       $(`[name="${key}"]`, root).oninput = (e) => {
-        doc[key] = e.target.value;
+        if (e.target.matches("[data-date]")) {
+          try {
+            doc[key] = dateValue(e.target);
+          } catch {
+            doc[key] = e.target.value;
+          }
+        } else doc[key] = e.target.value;
         notify();
       };
     $("#add-line", root).onclick = () => addLine();
@@ -398,6 +412,15 @@ export async function invoiceEditor(
     } = {},
   ) {
     if (manualSave && !automatic) return;
+    for (const input of $$("input[data-date]", root)) {
+      try {
+        dateValue(input);
+      } catch (error) {
+        if (automatic) return;
+        input.reportValidity();
+        throw error;
+      }
+    }
     if (!ready()) {
       if (automatic) return;
       throw new Error(
@@ -414,7 +437,7 @@ export async function invoiceEditor(
     const rev = revision;
     const run = async () => {
       const payload = {
-        customer_id: doc.customer_id,
+        customer_id: doc.customer_id || null,
         invoice_date: doc.invoice_date,
         due_date: doc.due_date || null,
         terms: doc.terms,

@@ -8,6 +8,7 @@ import uuid
 import zipfile
 from datetime import datetime, date
 from openpyxl import load_workbook, Workbook
+from openpyxl.cell import WriteOnlyCell
 from openpyxl.utils.datetime import from_excel
 from .database import connection, now, settings, audit
 from .models import Customer, Item
@@ -135,8 +136,6 @@ def preview_import(blob,filename,kind):
         try:
             if kind=="customers":
                 data=Customer(**{k:v for k,v in values.items() if k in Customer.model_fields}).model_dump()
-                if norm(data["name"]) in existing or norm(data["name"]) in seen:
-                    warnings.append("Possible duplicate name. Kept separate; select only after review")
             elif kind=="items":
                 values["name"]=str(raw.get("name") or "")
                 data=Item(**{k:(v if v!="" else None) for k,v in values.items() if k in Item.model_fields and (v!="" or k=="default_rate")}).model_dump()
@@ -167,7 +166,7 @@ def preview_import(blob,filename,kind):
         if len(records)>=10000:
             truncated=True;break
     preview={"kind":kind,"sheet":sheet,"records":records,"valid":len(records)-incomplete,"incomplete":incomplete,"skipped":skipped,"truncated":truncated,
-             "notice":"Only the first 50,000 rows are scanned; scanning stops after 300 consecutive empty/formula-only rows. Split data after large gaps into a separate file." if truncated else "Review all warnings before importing. Duplicates are never merged."}
+             "notice":"Only the first 50,000 rows are scanned; scanning stops after 300 consecutive empty/formula-only rows. Split data after large gaps into a separate file." if truncated else "Review all warnings before importing. Each selected row is kept as a separate record."}
     preview_id=str(uuid.uuid4())
     with connection(True) as db:
         db.execute("DELETE FROM import_previews WHERE created_at<?",(int(time.time())-3600,))
@@ -221,7 +220,13 @@ def workbook_bytes(headers,rows):
     wb=Workbook(write_only=True);ws=wb.create_sheet("SVS Export")
     ws.append(headers)
     for row in rows:
-        ws.append([safe_cell(v) for v in row])
+        cells=[]
+        for value in row:
+            cell=WriteOnlyCell(ws,value=safe_cell(value))
+            if isinstance(value,(date,datetime)):
+                cell.number_format="dd/mm/yyyy"
+            cells.append(cell)
+        ws.append(cells)
     output=io.BytesIO();wb.save(output)
     return output.getvalue()
 
@@ -235,7 +240,7 @@ def export_master(kind):
         elif kind=="invoices":
             headers=["Invoice number","Date","Customer","GSTIN","Taxable","CGST","SGST","Rounding","Total","Status","Historical"]
             records=db.execute("SELECT number,invoice_date,json_extract(customer_snapshot,'$.name'),json_extract(customer_snapshot,'$.gstin'),taxable,cgst,sgst,rounding,total,status,historical FROM invoices ORDER BY invoice_date")
-            return workbook_bytes(headers,([*list(row)[:4],*[int(v)/100 for v in list(row)[4:9]],*list(row)[9:]] for row in records))
+            return workbook_bytes(headers,([row[0],date.fromisoformat(row[1]),row[2],row[3],*[int(v)/100 for v in list(row)[4:9]],*list(row)[9:]] for row in records))
         else:
             raise BillingError("Unknown export")
         records=db.execute("SELECT "+",".join(columns)+" FROM "+kind+" ORDER BY name")

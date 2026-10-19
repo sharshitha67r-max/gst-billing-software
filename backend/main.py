@@ -12,7 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from . import auth, service, transfers
 from .database import initialize, connection, settings, audit, now
 from .money import BillingError, calculate
-from .models import Login, Customer, Item, Invoice, Calculation, Payment, Reason, ImportCommit, BackupConfirm
+from .models import Login, Customer, Item, Invoice, Calculation, Payment, Reason, ImportCommit, BackupConfirm, DeleteConfirm
+from .dates import report_date
 from .documents import invoice_pdf, report_pdf
 from .cloud_database import CloudDatabaseError
 
@@ -179,6 +180,11 @@ def customer_profile(identifier:str,owner=Depends(auth.require_owner)):
     return customer
 
 
+@app.delete("/api/customers/{identifier}")
+def delete_customer(identifier:str,data:DeleteConfirm,owner=Depends(auth.require_owner)):
+    return service.delete_master("customers",identifier,owner["email"])
+
+
 @app.get("/api/items")
 def items(q:str=Query("",max_length=200),page:int=Query(1,ge=1),page_size:int=Query(50,ge=1,le=200),all_records:bool=False,owner=Depends(auth.require_owner)):
     return service.master_list("items",q,page,page_size,all_records)
@@ -203,6 +209,11 @@ def item_profile(identifier:str,owner=Depends(auth.require_owner)):
         item=service.require_row(db,"items",identifier)
         item["history"]=[dict(x) for x in db.execute("SELECT i.id,i.number,i.invoice_date,i.status,l.quantity,l.unit_price,json_extract(i.customer_snapshot,'$.name') AS customer FROM invoice_items l JOIN invoices i ON i.id=l.invoice_id WHERE l.item_id=? AND i.status NOT IN ('Draft','Cancelled') ORDER BY i.invoice_date DESC LIMIT 100",(identifier,))]
     return item
+
+
+@app.delete("/api/items/{identifier}")
+def delete_item(identifier:str,data:DeleteConfirm,owner=Depends(auth.require_owner)):
+    return service.delete_master("items",identifier,owner["email"])
 
 
 @app.post("/api/calculate")
@@ -284,7 +295,7 @@ def reports(kind:str,start:str="",end:str="",format:str="json",owner=Depends(aut
     if format=="xlsx":
         keys=[k for k in (data["rows"][0] if data["rows"] else ["label","total"]) if k!="id"]
         monetary={"taxable","cgst","sgst","rounding","total","paid","balance"}
-        values=([None if row.get("historical") and k in {"taxable","cgst","sgst","rounding"} else row[k]/100 if k in monetary else row[k] for k in keys] for row in data["rows"])
+        values=([None if row.get("historical") and k in {"taxable","cgst","sgst","rounding"} else row[k]/100 if k in monetary else report_date(kind,k,row[k],excel=True) for k in keys] for row in data["rows"])
         return attachment(transfers.workbook_bytes([k.title() for k in keys],values),"svs-report.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     return data
 

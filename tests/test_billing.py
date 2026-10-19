@@ -164,11 +164,13 @@ def test_import_review_duplicate_names_and_preserved_descriptions(client):
     data=xlsx({'Customer':[['Name','Place'],['Same shop','First street'],['Same shop','Second street']],
                'Item':[[None,'Nisha Black 15 Rupees'],[None,'Item Name'],[None,'Neeta cone']]})
     customers=preview(client,'customers',data).json()
-    assert customers['valid']==2 and customers['records'][1]['warnings']
+    assert customers['valid']==2 and not customers['records'][1]['warnings']
+    assert all(r['recommended'] for r in customers['records'])
     assert client.get('/api/customers').json()['total']==0
     commit=client.post('/api/import/commit',json={'preview_id':customers['id'],'selected':[0,1]})
     assert commit.status_code==200,commit.text
     assert client.get('/api/customers').json()['total']==2
+    assert all('duplicate' not in r for r in client.get('/api/customers').json()['rows'])
     assert client.post('/api/import/commit',json={'preview_id':customers['id'],'selected':[0]}).status_code==400
     items=preview(client,'items',data).json()
     assert items['valid']==2 and items['incomplete']==1
@@ -258,3 +260,74 @@ def test_ambiguous_historical_customers_do_not_collapse_in_reports(client):
     rows=list(load_workbook(io.BytesIO(export.content),data_only=True).active.values)
     taxable_index=rows[0].index('Taxable')
     assert rows[1][taxable_index] is None
+
+
+def test_delete_masters_keeps_invoice_snapshots_payments_and_editing(client):
+    payload=invoice_payload(client,invoice_date='2026-10-07')
+    item=client.post('/api/items',json={'name':'Saved product','default_rate':'118'}).json()
+    payload['lines']=[{'item_id':item['id'],'description':'Original product description','quantity':'2','rate':'118','gst_rate':'18'}]
+    invoice=client.post('/api/invoices',json=payload).json()
+    payment={'invoice_id':invoice['id'],'payment_date':'2026-10-08','amount':'100','method':'Cash','idempotency_key':str(uuid.uuid4())}
+    before=client.post('/api/payments',json=payment).json()
+    for kind,identifier in [('customers',payload['customer_id']),('items',item['id'])]:
+        response=client.request('DELETE',f'/api/{kind}/{identifier}',json={'confirmation':'DELETE'})
+        assert response.status_code==200,response.text
+        assert response.json()['deleted']
+        assert client.get(f'/api/{kind}?all_records=true').json()['total']==0
+    after=client.get('/api/invoices/'+invoice['id']).json()
+    assert after['customer_id'] is None and after['lines'][0]['item_id'] is None
+    assert after['version']==before['version']+2
+    for key in ['customer_snapshot','business_snapshot','total','taxable','cgst','sgst','paid','balance','payments','status','number']:
+        assert after[key]==before[key],key
+    assert after['lines']==[{**line,'item_id':None} for line in before['lines']]
+    pdf=PdfReader(io.BytesIO(client.get('/api/invoices/'+invoice['id']+'/pdf').content))
+    assert 'Test Beauty Store' in pdf.pages[0].extract_text()
+    assert 'Original product description' in pdf.pages[0].extract_text()
+    report=client.get('/api/reports/sales?start=2026-10-01&end=2026-10-31').json()
+    assert report['summary']['total']==23600 and report['summary']['invoices']==1
+    # A stale editor cannot put deleted master references back onto the invoice.
+    assert client.put('/api/invoices/'+invoice['id'],json={**payload,'version':before['version']}).status_code==400
+    saved=client.put('/api/invoices/'+invoice['id'],json={**payload,'customer_id':None,'lines':[{**payload['lines'][0],'item_id':None}],'version':after['version'],'notes':'Updated after master deletion'})
+    assert saved.status_code==200,saved.text
+    assert saved.json()['customer_snapshot']==before['customer_snapshot']
+    assert saved.json()['total']==23600 and saved.json()['balance']==13600
+    assert client.post('/api/invoices',json={**payload,'customer_id':None}).status_code==400
+    with connection() as db:
+        assert not db.execute('PRAGMA foreign_key_check').fetchall()
+    actions=[r['action'] for r in client.get('/api/audit').json()['rows']]
+    assert 'Customer deleted' in actions and 'Item deleted' in actions
+
+
+@pytest.mark.parametrize('kind',['customers','items'])
+def test_master_delete_requires_owner_csrf_origin_and_confirmation(client,kind):
+    row=client.post('/api/'+kind,json={'name':'Disposable test record'}).json()
+    url=f'/api/{kind}/{row["id"]}'
+    assert client.request('DELETE',url,json={}).status_code==422
+    assert client.request('DELETE',url,json={'confirmation':'yes'}).status_code==422
+    csrf=client.headers.pop('X-CSRF-Token')
+    assert client.request('DELETE',url,json={'confirmation':'DELETE'}).status_code==403
+    client.headers['X-CSRF-Token']=csrf
+    assert client.request('DELETE',url,headers={'Origin':'https://hostile.example'},json={'confirmation':'DELETE'}).status_code==403
+    assert client.get('/api/'+kind).json()['total']==1
+    assert client.request('DELETE',url,json={'confirmation':'DELETE'}).status_code==200
+    assert client.request('DELETE',url,json={'confirmation':'DELETE'}).status_code==400
+    client.post('/api/auth/logout',json={})
+    assert client.request('DELETE',url,json={'confirmation':'DELETE'}).status_code==401
+
+
+def test_day_month_year_in_pdf_and_excel_exports(client):
+    invoice=client.post('/api/invoices',json=invoice_payload(client,invoice_date='2026-10-07',due_date='2026-11-09')).json()
+    pdf=PdfReader(io.BytesIO(client.get('/api/invoices/'+invoice['id']+'/pdf').content))
+    assert 'DATE: 07/10/2026' in pdf.pages[0].extract_text()
+    export=load_workbook(io.BytesIO(client.get('/api/export/invoices').content)).active
+    assert export['B2'].number_format=='dd/mm/yyyy'
+    assert export['B2'].value.strftime('%Y-%m-%d')=='2026-10-07'
+    for kind in ['sales','daily','outstanding']:
+        url='/api/reports/'+kind+'?start=2026-10-01&end=2026-11-30'
+        text='\n'.join(p.extract_text() for p in PdfReader(io.BytesIO(client.get(url+'&format=pdf').content)).pages)
+        assert '01/10/2026 to 30/11/2026' in text
+        assert '07/10/2026' in text
+        ws=load_workbook(io.BytesIO(client.get(url+'&format=xlsx').content)).active
+        dates=[c for row in ws.iter_rows(min_row=2) for c in row if c.is_date]
+        assert dates and all(c.number_format=='dd/mm/yyyy' for c in dates)
+    assert client.get('/api/invoices/'+invoice['id']).json()['invoice_date']=='2026-10-07'

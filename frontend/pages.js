@@ -7,6 +7,11 @@ import {
   amount,
   today,
   displayDate,
+  displayDateTime,
+  reportDate,
+  dateInput,
+  dateValue,
+  bindDates,
   debounce,
   icon,
   badge,
@@ -25,13 +30,40 @@ import {
 
 const newButton = (label, action, id) =>
   `<button class="primary" ${id ? 'id="' + id + '"' : ""} ${action ? 'data-action="' + action + '"' : ""}>${icon("plus")}${label}</button>`;
+function masterDeleteAction(dialog, kind, record) {
+  if (!record?.id) return;
+  const label = kind === "customers" ? "customer" : "item";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "danger delete-master";
+  button.textContent = "Delete " + label;
+  $(".modal-foot", dialog).prepend(button);
+  button.onclick = () => {
+    const confirmation = modal(
+      "Delete " + label + "?",
+      `<p>Delete <strong>${esc(record.name)}</strong> from your ${kind}?</p><p class="subtitle">Saved invoices, item descriptions, totals and payments will be kept. This ${label} will no longer appear in your list or be available for new invoices. This cannot be undone.</p>`,
+      {
+        save: "Delete " + label,
+        onSave: async () => {
+          await api(`/api/${kind}/${record.id}`, {
+            method: "DELETE",
+            body: { confirmation: "DELETE" },
+          });
+          toast((label === "customer" ? "Customer" : "Item") + " deleted");
+          await state.navigate("/" + kind);
+        },
+      },
+    );
+    $("[type=submit]", confirmation).classList.add("danger");
+  };
+}
 export function customerModal(
   customer = null,
   onSaved = () => state.navigate("/customers"),
 ) {
   const d = customer || {};
   const body = `<div class="form-grid">${field("Customer name", "name", d.name, { required: true, full: true, max: 200 })}${field("Place / address", "place", d.place, { full: true, textarea: true, max: 1000 })}${field("City", "city", d.city)}${field("State", "state", d.state || "Karnataka")}${field("PIN code", "pincode", d.pincode, { max: 20 })}${field("Phone", "phone", d.phone, { max: 80 })}${field("GSTIN (optional)", "gstin", d.gstin, { max: 30 })}${field("Email (optional)", "email", d.email, { type: "email", max: 254 })}${field("Notes", "notes", d.notes, { full: true, textarea: true })}<label class="check span-two"><input name="active" type="checkbox" ${d.active !== 0 ? "checked" : ""}>Active customer</label></div>`;
-  return modal(customer ? "Edit customer" : "Add customer", body, {
+  const dialog = modal(customer ? "Edit customer" : "Add customer", body, {
     save: "Save customer",
     onSave: async (form) => {
       const data = formData(form);
@@ -44,13 +76,15 @@ export function customerModal(
       await onSaved(result);
     },
   });
+  masterDeleteAction(dialog, "customers", customer);
+  return dialog;
 }
 export function itemModal(
   item = null,
   onSaved = () => state.navigate("/items"),
 ) {
   const d = item || {};
-  return modal(
+  const dialog = modal(
     item ? "Edit item" : "Add item",
     `<div class="form-grid">${field("Item name", "name", d.name, { required: true, full: true })}${field("Description", "description", d.description, { textarea: true, full: true, max: 1000 })}${field("Default selling rate (GST included)", "default_rate", d.default_rate == null ? "" : amount(d.default_rate), { type: "number", step: ".01", min: 0, help: "Leave blank when the selling rate is not set." })}${field("GST rate (%)", "gst_rate", d.gst_rate || state.settings.default_gst, { type: "number", step: ".01", min: 0, required: true })}${field("Unit", "unit", d.unit || "Nos", { required: true, max: 30 })}${field("HSN / SAC (optional)", "hsn", d.hsn, { max: 30 })}<label class="check span-two"><input name="active" type="checkbox" ${d.active !== 0 ? "checked" : ""}>Active item</label></div>`,
     {
@@ -68,6 +102,8 @@ export function itemModal(
       },
     },
   );
+  masterDeleteAction(dialog, "items", item);
+  return dialog;
 }
 
 export async function dashboard(root) {
@@ -87,12 +123,7 @@ export async function dashboard(root) {
   root.innerHTML =
     pageHeader(
       "Dashboard",
-      new Intl.DateTimeFormat("en-IN", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }).format(date),
+      displayDate(d.today),
       `<a href="/invoices/new" class="button-link"><button class="primary">${icon("plus")}New invoice</button></a>`,
       "BUSINESS OVERVIEW",
     ) +
@@ -162,7 +193,7 @@ export async function masters(root, kind) {
     if (seq !== sequence || !root.isConnected) return;
     const list = $("#master-list", root);
     list.innerHTML = data.rows.length
-      ? `<div class="table-scroll"><table><thead><tr><th>${customer ? "Customer" : "Item description"}</th>${customer ? "<th>Place / city</th><th>Phone</th><th>GSTIN</th>" : '<th class="number">Default rate</th><th>GST</th><th>Unit</th>'}<th></th></tr></thead><tbody>${data.rows.map((r) => `<tr><td><a href="/${kind}/${r.id}" class="strong">${esc(r.name)}</a>${r.duplicate ? ' <span class="badge unpaid">Duplicate name</span>' : ""}${!r.active ? ' <span class="badge">Inactive</span>' : ""}</td>${customer ? `<td class="muted">${esc([r.place, r.city].filter(Boolean).join(", "))}</td><td class="muted">${esc(r.phone || "—")}</td><td class="mono muted">${esc(r.gstin || "—")}</td>` : `<td class="number">${r.default_rate === null ? '<span class="muted">Not set</span>' : money(r.default_rate)}</td><td class="muted">${esc(r.gst_rate)}%</td><td class="muted">${esc(r.unit)}</td>`}<td><div class="row-actions"><button class="small" data-edit="${r.id}">${icon("edit")}Edit</button></div></td></tr>`).join("")}</tbody></table></div>`
+      ? `<div class="table-scroll"><table><thead><tr><th>${customer ? "Customer" : "Item description"}</th>${customer ? "<th>Place / city</th><th>Phone</th><th>GSTIN</th>" : '<th class="number">Default rate</th><th>GST</th><th>Unit</th>'}<th></th></tr></thead><tbody>${data.rows.map((r) => `<tr><td><a href="/${kind}/${r.id}" class="strong">${esc(r.name)}</a>${!r.active ? ' <span class="badge">Inactive</span>' : ""}</td>${customer ? `<td class="muted">${esc([r.place, r.city].filter(Boolean).join(", "))}</td><td class="muted">${esc(r.phone || "—")}</td><td class="mono muted">${esc(r.gstin || "—")}</td>` : `<td class="number">${r.default_rate === null ? '<span class="muted">Not set</span>' : money(r.default_rate)}</td><td class="muted">${esc(r.gst_rate)}%</td><td class="muted">${esc(r.unit)}</td>`}<td><div class="row-actions"><button class="small" data-edit="${r.id}">${icon("edit")}Edit</button></div></td></tr>`).join("")}</tbody></table></div>`
       : empty(
           customer ? "No customers found" : "No items found",
           query
@@ -234,14 +265,21 @@ export async function history(root) {
       `<a href="/invoices/new"><button class="primary">${icon("plus")}New invoice</button></a>`,
       "SALES",
     ) +
-    `<div class="toolbar"><div class="search">${icon("search")}<input id="invoice-search" aria-label="Search invoices" placeholder="Invoice no., customer, phone, GSTIN or amount…"></div><select id="invoice-status" aria-label="Invoice status"><option value="">All statuses</option>${["Draft", "Unpaid", "Partially Paid", "Paid", "Cancelled"].map((s) => `<option>${s}</option>`)}</select><select id="date-preset" aria-label="Date range"><option value="">All dates</option><option value="today">Today</option><option value="week">This week</option><option value="month">This month</option><option value="custom">Custom range</option></select><input type="date" id="invoice-start" aria-label="From date"><input type="date" id="invoice-end" aria-label="To date"></div><div class="panel" id="invoice-list"></div>`;
+    `<div class="toolbar"><div class="search">${icon("search")}<input id="invoice-search" aria-label="Search invoices" placeholder="Invoice no., customer, phone, GSTIN or amount…"></div><select id="invoice-status" aria-label="Invoice status"><option value="">All statuses</option>${["Draft", "Unpaid", "Partially Paid", "Paid", "Cancelled"].map((s) => `<option>${s}</option>`)}</select><select id="date-preset" aria-label="Date range"><option value="">All dates</option><option value="today">Today</option><option value="week">This week</option><option value="month">This month</option><option value="custom">Custom range</option></select>${dateInput("start", "", { id: "invoice-start", label: "From date" })}${dateInput("end", "", { id: "invoice-end", label: "To date" })}</div><div class="panel" id="invoice-list"></div>`;
+  bindDates(
+    root,
+    debounce(() => {
+      page = 1;
+      load().catch((e) => toast(e.message, true));
+    }),
+  );
   async function load() {
     const current = ++seq;
     const params = new URLSearchParams({
       q: $("#invoice-search", root).value,
       status: $("#invoice-status", root).value,
-      start: $("#invoice-start", root).value,
-      end: $("#invoice-end", root).value,
+      start: dateValue($("#invoice-start", root)),
+      end: dateValue($("#invoice-end", root)),
       page,
     });
     const data = await api("/api/invoices?" + params);
@@ -259,9 +297,9 @@ export async function history(root) {
   }
   $("#invoice-search", root).oninput = debounce(() => {
     page = 1;
-    load();
+    load().catch((e) => toast(e.message, true));
   });
-  $$("select,input[type=date]", root).forEach(
+  $$("select,input[data-date]", root).forEach(
     (e) =>
       (e.onchange = () => {
         if (e.id === "date-preset") {
@@ -280,12 +318,12 @@ export async function history(root) {
               String(d.getDate()).padStart(2, "0");
           }
           if (e.value !== "custom") {
-            $("#invoice-start", root).value = start;
-            $("#invoice-end", root).value = start ? now : "";
+            $("#invoice-start", root).value = start ? displayDate(start) : "";
+            $("#invoice-end", root).value = start ? displayDate(now) : "";
           }
         }
         page = 1;
-        load();
+        load().catch((e) => toast(e.message, true));
       }),
   );
   await load();
@@ -329,7 +367,7 @@ export async function invoiceDetail(root, id) {
     (d.historical
       ? '<div class="inline-note">Historical total-only record. The workbook did not supply item details, tax breakdown or payment history. Verify the outstanding balance against your records.</div>'
       : "") +
-    `<div class="panel"><div class="detail-header"><div><div class="eyebrow">${esc(d.business_snapshot.business_name)}</div><h2>TAX INVOICE</h2><span class="mono">${esc(d.number || "Number assigned when finalized")}</span></div><div>${badge(d.status)}<p class="help">${d.due_date ? "Due " + displayDate(d.due_date) : ""}</p></div></div><div class="summary-grid"><div><label>Bill to</label><p><strong>${esc(c.name)}</strong><br>${esc([c.place, [c.city, c.state, c.pincode].filter(Boolean).join(", ")].filter(Boolean).join("\n"))}</p></div><div><label>Contact</label><p>${esc(c.phone || "—")}<br>${esc(c.gstin || "No GSTIN supplied")}</p></div><div><label>Payment summary</label><p>Invoice total: ${money(d.total)}<br>Amount paid: ${money(d.paid)}<br><strong>Balance due: ${money(d.balance)}</strong></p></div></div>${d.lines.length ? `<div class="table-scroll"><table><thead><tr><th>Sl.</th><th>Description of goods</th><th class="number">Quantity</th><th class="number">Rate</th><th class="number">Amount</th><th class="number">${taxLabel}</th></tr></thead><tbody>${d.lines.map((l, i) => `<tr><td class="muted">${i + 1}</td><td>${esc(l.description)}${l.discount ? `<p class="help">Discount ${esc(l.discount_percent)}%: ${money(l.discount)}</p>` : ""}</td><td class="number">${esc(l.quantity)}</td><td class="number">${money(l.unit_price)}</td><td class="number">${money(l.amount)}</td><td class="number muted">${money(l.taxable)}</td></tr>`).join("")}</tbody></table></div>` : ""}<div class="invoice-bottom"><div class="detail-notes">${esc(d.amount_words)}<br><br><strong>Terms</strong><br>${esc(d.terms || d.business_snapshot.terms)}${d.notes ? "<br><br><strong>Notes</strong><br>" + esc(d.notes) : ""}</div><div class="totals">${!d.historical ? `<div><span>Taxable total</span><strong>${money(d.taxable)}</strong></div>${d.tax_groups.map((g) => `<div><span>CGST ${+g.gst_rate / 2}%</span><strong>${money(g.cgst)}</strong></div><div><span>SGST ${+g.gst_rate / 2}%</span><strong>${money(g.sgst)}</strong></div>`).join("")}${d.rounding ? `<div><span>Rounding adjustment</span><strong>${money(d.rounding)}</strong></div>` : ""}` : ""}<div class="grand"><span>Grand total</span><span>${money(d.total)}</span></div></div></div><div class="invoice-footer"><span class="save-state">Saved ${esc(d.updated_at.replace("T", " ").slice(0, 16))} UTC</span><div class="actions">${available && !d.historical ? `<a href="/invoices/${id}/edit"><button>${icon("edit")}${d.status === "Draft" ? "Continue draft" : "Edit invoice"}</button></a><a href="/invoices/new?duplicate=${id}"><button>${icon("copy")}Duplicate</button></a>` : ""}${!["Draft", "Cancelled", "Paid"].includes(d.status) ? '<button class="primary" id="record-payment">' + icon("payments") + "Record payment</button>" : ""}${available ? '<button class="danger" id="cancel-invoice">Cancel invoice</button>' : ""}</div></div></div><div class="panel"><div class="panel-head"><h2>Payments</h2><span class="subtitle">${money(d.paid)} received</span></div>${d.payments.length ? `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Method</th><th>Reference</th><th class="number">Amount</th><th></th></tr></thead><tbody>${d.payments.map((p) => `<tr><td>${displayDate(p.payment_date)}</td><td>${esc(p.method)} ${p.voided ? badge("Voided") : ""}</td><td class="muted">${esc(p.reference || "—")}</td><td class="number">${money(p.amount)}</td><td><div class="row-actions">${!p.voided ? `<button class="small" data-edit-payment="${p.id}">Edit</button><button class="small danger" data-void-payment="${p.id}">Void</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>` : empty("No payments recorded")}</div>`;
+    `<div class="panel"><div class="detail-header"><div><div class="eyebrow">${esc(d.business_snapshot.business_name)}</div><h2>TAX INVOICE</h2><span class="mono">${esc(d.number || "Number assigned when finalized")}</span></div><div>${badge(d.status)}<p class="help">${d.due_date ? "Due " + displayDate(d.due_date) : ""}</p></div></div><div class="summary-grid"><div><label>Bill to</label><p><strong>${esc(c.name)}</strong><br>${esc([c.place, [c.city, c.state, c.pincode].filter(Boolean).join(", ")].filter(Boolean).join("\n"))}</p></div><div><label>Contact</label><p>${esc(c.phone || "—")}<br>${esc(c.gstin || "No GSTIN supplied")}</p></div><div><label>Payment summary</label><p>Invoice total: ${money(d.total)}<br>Amount paid: ${money(d.paid)}<br><strong>Balance due: ${money(d.balance)}</strong></p></div></div>${d.lines.length ? `<div class="table-scroll"><table><thead><tr><th>Sl.</th><th>Description of goods</th><th class="number">Quantity</th><th class="number">Rate</th><th class="number">Amount</th><th class="number">${taxLabel}</th></tr></thead><tbody>${d.lines.map((l, i) => `<tr><td class="muted">${i + 1}</td><td>${esc(l.description)}${l.discount ? `<p class="help">Discount ${esc(l.discount_percent)}%: ${money(l.discount)}</p>` : ""}</td><td class="number">${esc(l.quantity)}</td><td class="number">${money(l.unit_price)}</td><td class="number">${money(l.amount)}</td><td class="number muted">${money(l.taxable)}</td></tr>`).join("")}</tbody></table></div>` : ""}<div class="invoice-bottom"><div class="detail-notes">${esc(d.amount_words)}<br><br><strong>Terms</strong><br>${esc(d.terms || d.business_snapshot.terms)}${d.notes ? "<br><br><strong>Notes</strong><br>" + esc(d.notes) : ""}</div><div class="totals">${!d.historical ? `<div><span>Taxable total</span><strong>${money(d.taxable)}</strong></div>${d.tax_groups.map((g) => `<div><span>CGST ${+g.gst_rate / 2}%</span><strong>${money(g.cgst)}</strong></div><div><span>SGST ${+g.gst_rate / 2}%</span><strong>${money(g.sgst)}</strong></div>`).join("")}${d.rounding ? `<div><span>Rounding adjustment</span><strong>${money(d.rounding)}</strong></div>` : ""}` : ""}<div class="grand"><span>Grand total</span><span>${money(d.total)}</span></div></div></div><div class="invoice-footer"><span class="save-state">Saved ${esc(displayDateTime(d.updated_at))} UTC</span><div class="actions">${available && !d.historical ? `<a href="/invoices/${id}/edit"><button>${icon("edit")}${d.status === "Draft" ? "Continue draft" : "Edit invoice"}</button></a><a href="/invoices/new?duplicate=${id}"><button>${icon("copy")}Duplicate</button></a>` : ""}${!["Draft", "Cancelled", "Paid"].includes(d.status) ? '<button class="primary" id="record-payment">' + icon("payments") + "Record payment</button>" : ""}${available ? '<button class="danger" id="cancel-invoice">Cancel invoice</button>' : ""}</div></div></div><div class="panel"><div class="panel-head"><h2>Payments</h2><span class="subtitle">${money(d.paid)} received</span></div>${d.payments.length ? `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Method</th><th>Reference</th><th class="number">Amount</th><th></th></tr></thead><tbody>${d.payments.map((p) => `<tr><td>${displayDate(p.payment_date)}</td><td>${esc(p.method)} ${p.voided ? badge("Voided") : ""}</td><td class="muted">${esc(p.reference || "—")}</td><td class="number">${money(p.amount)}</td><td><div class="row-actions">${!p.voided ? `<button class="small" data-edit-payment="${p.id}">Edit</button><button class="small danger" data-void-payment="${p.id}">Void</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>` : empty("No payments recorded")}</div>`;
   $("#print-invoice", root).onclick = () => printInvoice(id);
   $("#record-payment", root)?.addEventListener("click", () =>
     paymentModal(d, () => invoiceDetail(root, id)),
@@ -376,10 +414,17 @@ export async function payments(root) {
       "",
       "COLLECTIONS",
     ) +
-    `<div class="toolbar"><label class="field"><span>From</span><input type="date" id="payments-start"></label><label class="field"><span>To</span><input type="date" id="payments-end"></label><div class="actions"><button id="choose-payment" class="primary">${icon("plus")}Record payment</button></div></div><div class="panel" id="payments-list"></div>`;
+    `<div class="toolbar"><label class="field"><span>From</span>${dateInput("start", "", { id: "payments-start", label: "From date" })}</label><label class="field"><span>To</span>${dateInput("end", "", { id: "payments-end", label: "To date" })}</label><div class="actions"><button id="choose-payment" class="primary">${icon("plus")}Record payment</button></div></div><div class="panel" id="payments-list"></div>`;
+  bindDates(
+    root,
+    debounce(() => {
+      page = 1;
+      load().catch((e) => toast(e.message, true));
+    }),
+  );
   async function load() {
     const d = await api(
-      `/api/payments?page=${page}&start=${$("#payments-start", root).value}&end=${$("#payments-end", root).value}`,
+      `/api/payments?page=${page}&start=${dateValue($("#payments-start", root))}&end=${dateValue($("#payments-end", root))}`,
     );
     const panel = $("#payments-list", root);
     panel.innerHTML = d.rows.length
@@ -397,11 +442,11 @@ export async function payments(root) {
       panel,
     );
   }
-  $$("input[type=date]", root).forEach(
+  $$("input[data-date]", root).forEach(
     (el) =>
       (el.onchange = () => {
         page = 1;
-        load();
+        load().catch((e) => toast(e.message, true));
       }),
   );
   $("#choose-payment", root).onclick = async () => {
@@ -462,13 +507,19 @@ export async function reports(root) {
       .map(([v, l]) => `<option value="${v}">${l}</option>`)
       .join(
         "",
-      )}</select><input id="report-start" type="date" value="${today().slice(0, 7)}-01" aria-label="Report start"><span class="muted small-type">to</span><input id="report-end" type="date" value="${today()}" aria-label="Report end"><div class="actions"><a id="report-excel"><button>${icon("download")}Excel</button></a><a id="report-pdf" target="_blank" rel="noopener"><button>${icon("print")}PDF / Print</button></a></div></div><div id="report-summary"></div><div class="panel" id="report-data"></div><p class="footer-note">Drafts and cancelled invoices are excluded. Historical total-only records contribute sales totals; their unavailable tax breakdowns are excluded from tax amounts.</p>`;
+      )}</select>${dateInput("start", today().slice(0, 7) + "-01", { id: "report-start", label: "Report start", required: true })}<span class="muted small-type">to</span>${dateInput("end", today(), { id: "report-end", label: "Report end", required: true })}<div class="actions"><a id="report-excel"><button>${icon("download")}Excel</button></a><a id="report-pdf" target="_blank" rel="noopener"><button>${icon("print")}PDF / Print</button></a></div></div><div id="report-summary"></div><div class="panel" id="report-data"></div><p class="footer-note">Drafts and cancelled invoices are excluded. Historical total-only records contribute sales totals; their unavailable tax breakdowns are excluded from tax amounts.</p>`;
+  bindDates(
+    root,
+    debounce(() => {
+      load().catch((e) => toast(e.message, true));
+    }),
+  );
   async function load() {
     const current = ++seq;
     const kind = $("#report-kind", root).value;
     const params = new URLSearchParams({
-      start: $("#report-start", root).value,
-      end: $("#report-end", root).value,
+      start: dateValue($("#report-start", root)),
+      end: dateValue($("#report-end", root)),
     });
     const url = "/api/reports/" + kind + "?" + params;
     const d = await api(url);
@@ -499,7 +550,7 @@ export async function reports(root) {
       "balance",
     ];
     $("#report-data", root).innerHTML = d.rows.length
-      ? `<div class="table-scroll"><table><thead><tr>${keys.map((k) => `<th class="${monetary.includes(k) ? "number" : ""}">${esc(k === "label" ? { daily: "Date", monthly: "Month", customers: "Customer", gst: "Month" }[kind] || "Group" : k.replaceAll("_", " "))}</th>`).join("")}</tr></thead><tbody>${d.rows.map((r) => `<tr>${keys.map((k) => `<td class="${monetary.includes(k) ? "number" : ""}">${k === "number" ? `<a href="/invoices/${r.id}">${esc(r[k])}</a>` : k === "status" ? badge(r[k]) : monetary.includes(k) ? (r.historical && ["taxable", "cgst", "sgst", "rounding"].includes(k) ? "—" : money(r[k])) : esc(r[k] ?? "—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+      ? `<div class="table-scroll"><table><thead><tr>${keys.map((k) => `<th class="${monetary.includes(k) ? "number" : ""}">${esc(k === "label" ? { daily: "Date", monthly: "Month", customers: "Customer", gst: "Month" }[kind] || "Group" : k.replaceAll("_", " "))}</th>`).join("")}</tr></thead><tbody>${d.rows.map((r) => `<tr>${keys.map((k) => `<td class="${monetary.includes(k) ? "number" : ""}">${k === "number" ? `<a href="/invoices/${r.id}">${esc(r[k])}</a>` : k === "status" ? badge(r[k]) : monetary.includes(k) ? (r.historical && ["taxable", "cgst", "sgst", "rounding"].includes(k) ? "—" : money(r[k])) : esc(reportDate(kind, k, r[k]))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
       : empty("No records for this period");
   }
   $$("select,input", root).forEach(
@@ -546,7 +597,7 @@ export async function importPage(root) {
   };
   function render(d) {
     const review = $("#import-review", root);
-    review.innerHTML = `<div class="import-stats"><span><strong>${d.valid}</strong> valid rows</span><span><strong>${d.incomplete}</strong> incomplete / suspicious</span><span><strong>${d.skipped}</strong> blank rows skipped</span><span>Sheet: <strong>${esc(d.sheet)}</strong></span></div><div class="inline-note ${d.truncated ? "" : "info"}">${esc(d.notice)}${d.kind === "orders" ? "<br>Historical totals do not include a reliable tax breakdown or payment history. Select these rows explicitly only after review." : ""}</div><div class="panel"><div class="panel-head"><h2>Review rows</h2><div class="actions"><button class="small" id="select-recommended">Select recommended</button><button class="small" id="select-none">Clear selection</button></div></div><div class="import-table"><table><thead><tr><th>Import</th><th>Excel row</th><th>Record</th><th>Review notes</th></tr></thead><tbody>${d.records.map((r) => `<tr><td><input type="checkbox" aria-label="Import row ${r.row}" data-import-index="${r.index}" ${r.error ? "disabled" : ""} ${r.recommended ? "checked" : ""}></td><td class="mono">${r.row}</td><td>${esc(r.data.name || r.source.name || "Missing name")}${r.data.number ? `<p class="help">Invoice ${esc(r.data.number)} · ${esc(r.data.invoice_date)} · ${money(r.data.total)}</p>` : ""}${r.data.place ? '<p class="help">' + esc(r.data.place) + "</p>" : ""}</td><td>${r.error ? `<div class="review-error">${esc(r.error)}</div>` : r.warnings.length ? r.warnings.map((w) => `<div class="review-warning">${esc(w)}</div>`).join("") : '<span class="muted">Ready</span>'}</td></tr>`).join("")}</tbody></table></div><div class="invoice-footer"><span class="save-state" id="selected-count"></span><button class="primary" id="commit-import">Import selected rows</button></div></div>`;
+    review.innerHTML = `<div class="import-stats"><span><strong>${d.valid}</strong> valid rows</span><span><strong>${d.incomplete}</strong> incomplete / suspicious</span><span><strong>${d.skipped}</strong> blank rows skipped</span><span>Sheet: <strong>${esc(d.sheet)}</strong></span></div><div class="inline-note ${d.truncated ? "" : "info"}">${esc(d.notice)}${d.kind === "orders" ? "<br>Historical totals do not include a reliable tax breakdown or payment history. Select these rows explicitly only after review." : ""}</div><div class="panel"><div class="panel-head"><h2>Review rows</h2><div class="actions"><button class="small" id="select-recommended">Select recommended</button><button class="small" id="select-none">Clear selection</button></div></div><div class="import-table"><table><thead><tr><th>Import</th><th>Excel row</th><th>Record</th><th>Review notes</th></tr></thead><tbody>${d.records.map((r) => `<tr><td><input type="checkbox" aria-label="Import row ${r.row}" data-import-index="${r.index}" ${r.error ? "disabled" : ""} ${r.recommended ? "checked" : ""}></td><td class="mono">${r.row}</td><td>${esc(r.data.name || r.source.name || "Missing name")}${r.data.number ? `<p class="help">Invoice ${esc(r.data.number)} · ${esc(displayDate(r.data.invoice_date))} · ${money(r.data.total)}</p>` : ""}${r.data.place ? '<p class="help">' + esc(r.data.place) + "</p>" : ""}</td><td>${r.error ? `<div class="review-error">${esc(r.error)}</div>` : r.warnings.length ? r.warnings.map((w) => `<div class="review-warning">${esc(w)}</div>`).join("") : '<span class="muted">Ready</span>'}</td></tr>`).join("")}</tbody></table></div><div class="invoice-footer"><span class="save-state" id="selected-count"></span><button class="primary" id="commit-import">Import selected rows</button></div></div>`;
     const count = () =>
       ($("#selected-count", review).textContent =
         $$("[data-import-index]:checked", review).length + " rows selected");
@@ -707,7 +758,7 @@ export async function auditPage(root) {
     const d = await api("/api/audit?page=" + page);
     const panel = $("#audit-list", root);
     panel.innerHTML = d.rows.length
-      ? `<div class="table-scroll"><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Details</th></tr></thead><tbody>${d.rows.map((r) => `<tr><td class="mono no-wrap">${esc(r.created_at.replace("T", " ").slice(0, 19))}</td><td>${esc(r.actor)}</td><td>${esc(r.action)}</td><td class="small-type muted">${esc(r.details)}</td></tr>`).join("")}</tbody></table></div>`
+      ? `<div class="table-scroll"><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Details</th></tr></thead><tbody>${d.rows.map((r) => `<tr><td class="mono no-wrap">${esc(displayDateTime(r.created_at))}</td><td>${esc(r.actor)}</td><td>${esc(r.action)}</td><td class="small-type muted">${esc(r.details)}</td></tr>`).join("")}</tbody></table></div>`
       : empty("No activity yet");
     pager(
       d,

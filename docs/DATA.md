@@ -19,7 +19,7 @@ CSV uploads should use UTF-8 and the same named columns as the downloadable temp
 
 Imports have a preview and a separate commit. Preview state expires after an hour. The commit uses stored preview data, not financial values returned by the browser. Importing consumes that preview so the same confirmation cannot be accidentally repeated.
 
-Customer duplicates are flagged, never merged. Historical invoices link to an existing customer only when the name matches exactly one record. Ambiguous names retain their own snapshot and remain unlinked rather than being assigned to an arbitrary duplicate.
+Customers with matching names remain separate records without duplicate-name flags, so the owner can edit them manually. Historical invoices link to an existing customer only when the name matches exactly one record. Ambiguous names retain their own snapshot and remain unlinked rather than being assigned to an arbitrary duplicate.
 
 ### Large legacy files
 

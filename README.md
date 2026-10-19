@@ -63,6 +63,9 @@ See [calculation rules](docs/CALCULATIONS.md), [data format and import notes](do
 - Final calculations run on the server; the browser displays the server result.
 - Invoice numbers are allocated in a locked database transaction. Finalized invoices cannot be permanently deleted through the app.
 - Saved invoices retain customer, product and business/print snapshots. Editing a master does not rewrite an invoice.
+- Customer and item edit dialogs include a confirmed Delete action. Saved invoice details and payment records remain intact when a master is deleted.
+- Dates use **dd/mm/yyyy** in entry fields, lists, PDFs and Excel exports. Storage, APIs and JSON backups retain ISO dates.
+- Customers with matching names remain separate records without duplicate flags and can be edited manually.
 - Cancelling an invoice with recorded receipts requires voiding those receipt records with a reason first. This app records receipts; it does not initiate bank transfers or refunds.
 - Version 1 uses the existing CGST/SGST intrastate workflow. IGST, Google sign-in, email delivery, inventory and full double-entry accounting are not configured in this rebuild.
 
@@ -72,6 +75,7 @@ See [calculation rules](docs/CALCULATIONS.md), [data format and import notes](do
 pip install -r requirements-dev.txt
 pytest -q
 npm run check
+node --test tests/test_dates.mjs
 ```
 
 Node is used only for the optional JavaScript syntax check. Python tests exercise authentication, CSRF, rounding, concurrent numbering, immutable snapshots, payments, imports, backups and multi-page PDFs.

@@ -580,7 +580,7 @@ tbody tr:hover {
   width: auto;
   min-width: 140px;
 }
-.toolbar input[type="date"] {
+.toolbar .date-input {
   width: 150px;
 }
 .toolbar .actions {
@@ -1378,7 +1378,7 @@ dialog::backdrop {
     min-width: 100%;
     max-width: none;
   }
-  .toolbar input[type="date"] {
+  .toolbar .date-input {
     width: calc(50% - 7px);
   }
   .modal-body {
@@ -1437,3 +1437,5 @@ dialog::backdrop {
     background: #fff;
   }
 }
+
+.delete-master { margin-right: auto; }

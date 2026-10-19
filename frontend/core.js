@@ -1,3 +1,6 @@
+import { displayDate, parseDate } from "./dates.js";
+export { displayDate, displayDateTime, reportDate } from "./dates.js";
+
 export const state = {
   owner: null,
   settings: null,
@@ -31,14 +34,34 @@ export const today = () =>
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-export const displayDate = (value) =>
-  value
-    ? new Intl.DateTimeFormat("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }).format(new Date(value + "T12:00:00"))
-    : "—";
+export function dateInput(
+  name,
+  value = "",
+  { id = "", label = "", required = false } = {},
+) {
+  return `<input type="text" class="date-input" data-date inputmode="numeric" name="${esc(name)}" ${id ? `id="${esc(id)}"` : ""} ${label ? `aria-label="${esc(label)}"` : ""} value="${value ? esc(displayDate(value)) : ""}" placeholder="dd/mm/yyyy" maxlength="10" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" title="dd/mm/yyyy" ${required ? "required" : ""}>`;
+}
+export function dateValue(input) {
+  try {
+    const value = parseDate(input.value);
+    if (!value && input.required) throw new Error("Enter a date as dd/mm/yyyy");
+    input.setCustomValidity("");
+    return value;
+  } catch (error) {
+    input.setCustomValidity(error.message);
+    throw error;
+  }
+}
+export function bindDates(parent, onValidInput = null) {
+  $$("input[data-date]", parent).forEach((input) => {
+    input.addEventListener("input", () => {
+      try {
+        dateValue(input);
+        onValidInput?.();
+      } catch {}
+    });
+  });
+}
 export const debounce = (fn, ms = 230) => {
   let timer;
   return (...args) => {
@@ -51,7 +74,7 @@ export const icon = (name) =>
 export const badge = (status) =>
   `<span class="badge ${esc(status.toLowerCase().replaceAll(" ", "-"))}">${esc(status)}</span>`;
 export const field = (label, name, value = "", options = {}) =>
-  `<label class="field ${options.full ? "span-two" : ""}"><span>${esc(label)}</span>${options.textarea ? `<textarea name="${name}" ${options.required ? "required" : ""} maxlength="${options.max || 3000}">${esc(value)}</textarea>` : `<input name="${name}" type="${options.type || "text"}" value="${esc(value)}" ${options.required ? "required" : ""} ${options.step ? 'step="' + options.step + '"' : ""} ${options.min !== undefined ? 'min="' + options.min + '"' : ""} maxlength="${options.max || 500}" ${options.placeholder ? 'placeholder="' + esc(options.placeholder) + '"' : ""} ${options.autocomplete ? 'autocomplete="' + options.autocomplete + '"' : ""}>`}${options.help ? `<p class="help">${esc(options.help)}</p>` : ""}</label>`;
+  `<label class="field ${options.full ? "span-two" : ""}"><span>${esc(label)}</span>${options.type === "date" ? dateInput(name, value, { label, required: options.required }) : options.textarea ? `<textarea name="${name}" ${options.required ? "required" : ""} maxlength="${options.max || 3000}">${esc(value)}</textarea>` : `<input name="${name}" type="${options.type || "text"}" value="${esc(value)}" ${options.required ? "required" : ""} ${options.step ? 'step="' + options.step + '"' : ""} ${options.min !== undefined ? 'min="' + options.min + '"' : ""} maxlength="${options.max || 500}" ${options.placeholder ? 'placeholder="' + esc(options.placeholder) + '"' : ""} ${options.autocomplete ? 'autocomplete="' + options.autocomplete + '"' : ""}>`}${options.help ? `<p class="help">${esc(options.help)}</p>` : ""}</label>`;
 export const pageHeader = (
   title,
   subtitle,
@@ -122,6 +145,7 @@ export function modal(
   el.className = wide ? "wide" : "";
   el.innerHTML = `<form><div class="modal-head"><h2>${esc(title)}</h2><button type="button" data-close class="icon-button" aria-label="Close dialog">${icon("close")}</button></div><div class="modal-body"><div class="modal-error" role="alert"></div>${body}</div><div class="modal-foot">${footer}<button type="button" data-close>Close</button>${onSave ? `<button type="submit" class="primary">${esc(save)}</button>` : ""}</div></form>`;
   $$("[data-close]", el).forEach((b) => (b.onclick = () => el.close()));
+  bindDates(el);
   $("form", el).onsubmit = async (event) => {
     event.preventDefault();
     const button = $("[type=submit]", el);
@@ -161,7 +185,13 @@ export function confirmLeave() {
     $("[data-close]", el).textContent = "Continue editing";
   });
 }
-export const formData = (form) => Object.fromEntries(new FormData(form));
+export function formData(form) {
+  const data = Object.fromEntries(new FormData(form));
+  $$("input[data-date]", form).forEach((input) => {
+    data[input.name] = dateValue(input);
+  });
+  return data;
+}
 export function invoiceTable(rows) {
   if (!rows.length)
     return empty(

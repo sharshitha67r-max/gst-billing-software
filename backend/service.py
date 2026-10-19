@@ -1,7 +1,6 @@
 import json
 import uuid
 import re
-from collections import Counter
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from .database import connection, settings, audit, now, DEFAULTS
@@ -66,11 +65,23 @@ def master_list(kind, q="", page=1, page_size=50, all_records=False):
     with connection() as db:
         count = db.execute(f"SELECT COUNT(*) FROM {kind} WHERE {where}",params).fetchone()[0]
         rows = [dict(x) for x in db.execute(f"SELECT * FROM {kind} WHERE {where} ORDER BY name COLLATE NOCASE LIMIT ? OFFSET ?",[*params,page_size,(page-1)*page_size])]
-        if kind=="customers":
-            names = Counter(normalized_name(x[0]) for x in db.execute("SELECT name FROM customers"))
-            for row in rows:
-                row["duplicate"] = names[normalized_name(row["name"])] > 1
     return {"rows":rows,"total":count,"page":page,"page_size":page_size}
+
+
+def delete_master(kind, identifier, actor):
+    if kind not in {"customers", "items"}:
+        raise BillingError("Unknown master")
+    with connection(True) as db:
+        record = require_row(db, kind, identifier)
+        if kind == "customers":
+            db.execute("UPDATE invoices SET customer_id=NULL,version=version+1 WHERE customer_id=?", (identifier,))
+        else:
+            db.execute("UPDATE invoices SET version=version+1 WHERE id IN (SELECT invoice_id FROM invoice_items WHERE item_id=?)", (identifier,))
+            db.execute("UPDATE invoice_items SET item_id=NULL WHERE item_id=?", (identifier,))
+        db.execute(f"DELETE FROM {kind} WHERE id=?", (identifier,))
+        audit(db, actor, "Customer deleted" if kind == "customers" else "Item deleted", identifier,
+              {"name": record["name"], "invoice_history_preserved": True})
+    return {"deleted": True, "id": identifier}
 
 
 def update_settings(data, actor):
@@ -146,8 +157,13 @@ def save_invoice(payload, actor, identifier=None):
     with connection(True) as db:
         conf=settings(db)
         totals=calculate(data["lines"],conf["enable_discounts"])
-        customer=require_row(db,"customers",data["customer_id"])
         old=require_row(db,"invoices",identifier) if identifier else None
+        if data["customer_id"]:
+            customer=require_row(db,"customers",data["customer_id"])
+        elif old and old["customer_id"] is None:
+            customer={**json.loads(old["customer_snapshot"]), "id": None}
+        else:
+            raise BillingError("Select a customer")
         if old:
             if old["status"]=="Cancelled" or old["historical"]:
                 raise BillingError("Cancelled and historical invoices cannot be edited")

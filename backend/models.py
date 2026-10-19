@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal
 
 
 class Payload(BaseModel):
@@ -46,7 +47,7 @@ class Line(Payload):
 
 
 class Invoice(Payload):
-    customer_id: str
+    customer_id: str | None
     invoice_date: str = Field(max_length=10)
     due_date: str | None = Field(default=None, max_length=10)
     lines: list[Line] = Field(min_length=1, max_length=500)
@@ -82,3 +83,7 @@ class Reason(Payload):
 class BackupConfirm(Payload):
     preview_id: str
     confirmation: str
+
+
+class DeleteConfirm(Payload):
+    confirmation: Literal["DELETE"]

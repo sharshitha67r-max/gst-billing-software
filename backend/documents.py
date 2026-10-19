@@ -7,6 +7,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, Image
 from .money import amount_words
+from .dates import display_date, report_date
 
 
 def money(n):
@@ -38,7 +39,7 @@ def invoice_pdf(invoice):
             left.insert(0,image)
         except Exception:
             pass
-    header=Table([[left,[p("INVOICE NO: "+str(invoice["number"] or "Draft")),p("DATE: "+invoice["invoice_date"]),p("STATUS: "+invoice["status"])]]],colWidths=[350,169])
+    header=Table([[left,[p("INVOICE NO: "+str(invoice["number"] or "Draft")),p("DATE: "+display_date(invoice["invoice_date"])),p("STATUS: "+invoice["status"])]]],colWidths=[350,169])
     header.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.8,colors.black),("VALIGN",(0,0),(-1,-1),"TOP"),("LINEBEFORE",(1,0),(1,0),.5,colors.black),("TOPPADDING",(0,0),(-1,-1),10),("BOTTOMPADDING",(0,0),(-1,-1),10)]))
     elements.append(header)
     customer_address="\n".join(filter(None,[c.get("place"),", ".join(filter(None,[c.get("city"),c.get("state"),c.get("pincode")]))]))
@@ -96,10 +97,10 @@ def report_pdf(data,business):
     money_keys={"taxable","cgst","sgst","rounding","total","paid","balance"}
     rows=[[Paragraph(escape(k.replace("_"," ").title()),small) for k in keys]]
     for row in data["rows"]:
-        rows.append([Paragraph(escape("Unavailable" if row.get("historical") and k in {"taxable","cgst","sgst","rounding"} else money(row[k]) if k in money_keys else str(row[k] or "")),small) for k in keys])
+        rows.append([Paragraph(escape("Unavailable" if row.get("historical") and k in {"taxable","cgst","sgst","rounding"} else money(row[k]) if k in money_keys else str(report_date(data["kind"],k,row[k]) or "")),small) for k in keys])
     if len(rows)==1:
         rows.append(["No records"]+[""]*(len(keys)-1))
     t=Table(rows,colWidths=[(landscape(A4)[0]-50)/len(keys)]*len(keys),repeatRows=1)
     t.setStyle(TableStyle([("GRID",(0,0),(-1,-1),.25,colors.grey),("VALIGN",(0,0),(-1,-1),"TOP"),("BACKGROUND",(0,0),(-1,0),colors.HexColor("#eeeeee")),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
-    doc.build([Paragraph(escape(business["business_name"]),styles["Heading1"]),Paragraph(escape(data["kind"].title()+" report | "+data["start"]+" to "+data["end"]),styles["Normal"]),Spacer(1,12),t])
+    doc.build([Paragraph(escape(business["business_name"]),styles["Heading1"]),Paragraph(escape(data["kind"].title()+" report | "+display_date(data["start"])+" to "+display_date(data["end"])),styles["Normal"]),Spacer(1,12),t])
     return buf.getvalue()
