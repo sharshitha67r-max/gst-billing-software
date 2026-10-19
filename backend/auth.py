@@ -34,7 +34,7 @@ def digest(token):
 
 
 def production():
-    return os.getenv("APP_ENV", "development") == "production"
+    return os.getenv("APP_ENV", "").strip().lower() == "production" or bool(os.getenv("RENDER_EXTERNAL_URL"))
 
 
 def set_owner(email, password):

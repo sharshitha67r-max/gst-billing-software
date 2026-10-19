@@ -14,6 +14,7 @@ from .database import initialize, connection, settings, audit, now
 from .money import BillingError, calculate
 from .models import Login, Customer, Item, Invoice, Calculation, Payment, Reason, ImportCommit, BackupConfirm
 from .documents import invoice_pdf, report_pdf
+from .cloud_database import CloudDatabaseError
 
 FRONTEND=Path(__file__).resolve().parent.parent/"frontend"
 BACKUP_TABLES=["settings","customers","items","invoices","invoice_items","payments","invoice_sequences","audit_logs"]
@@ -81,6 +82,11 @@ async def billing_error(request,exc):
 @app.exception_handler(sqlite3.IntegrityError)
 async def conflict(request,exc):
     return JSONResponse({"detail":"This record conflicts with an existing record. Reload and try again."},status_code=409)
+
+
+@app.exception_handler(CloudDatabaseError)
+async def cloud_unavailable(request, exc):
+    return JSONResponse({"detail":str(exc)},status_code=503)
 
 
 def attachment(data,filename,media):

@@ -1,18 +1,20 @@
-# This blueprint creates a paid web service and a persistent disk.
-# Review Render's displayed charges before creating it.
+# Free Render compute with a separately provisioned free Turso/libSQL database.
+# Keep both services within their free quotas; no local business-data storage.
 services:
   - type: web
     name: svs-enterprises-billing
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /api/health
-    disk:
-      name: billing-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       - key: APP_ENV
         value: production
+      - key: DB_BACKEND
+        value: turso
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
       - key: DATA_DIR
         value: /app/data
       - key: PORT

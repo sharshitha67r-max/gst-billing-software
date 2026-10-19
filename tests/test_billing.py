@@ -12,8 +12,12 @@ from backend.auth import set_owner
 from backend.money import calculate, amount_words
 
 
-@pytest.fixture
-def client(tmp_path,monkeypatch):
+@pytest.fixture(params=['sqlite','turso-protocol'])
+def client(tmp_path,monkeypatch,request):
+    for key in ('DB_BACKEND','TURSO_DATABASE_URL','TURSO_AUTH_TOKEN'):
+        monkeypatch.delenv(key,raising=False)
+    if request.param=='turso-protocol':
+        request.getfixturevalue('turso_backend')
     monkeypatch.setenv('DATA_DIR',str(tmp_path))
     monkeypatch.setenv('APP_ENV','development')
     monkeypatch.delenv('PUBLIC_URL',raising=False)

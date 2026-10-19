@@ -1,5 +1,7 @@
 import json
 import uuid
+import re
+from collections import Counter
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from .database import connection, settings, audit, now, DEFAULTS
@@ -29,11 +31,15 @@ def require_row(db, table, identifier):
     return dict(row)
 
 
-def save_master(db, kind, data, actor, identifier=None):
+def normalized_name(value):
+    return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+
+
+def save_master(db, kind, data, actor, identifier=None, read_back=True):
     if kind not in {"customers","items"} or not data.get("name","").strip():
         raise BillingError("A customer or item needs a name")
+    old = db.execute(f"SELECT id FROM {kind} WHERE id=?", (identifier,)).fetchone() if identifier else None
     identifier = identifier or str(uuid.uuid4())
-    old = db.execute(f"SELECT id FROM {kind} WHERE id=?", (identifier,)).fetchone()
     if kind == "items":
         data["default_rate"] = paise(data["default_rate"]) if data.get("default_rate") not in (None, "") else None
         data["gst_rate"] = str(decimal(data.get("gst_rate",18), "GST rate", maximum=100))
@@ -45,7 +51,7 @@ def save_master(db, kind, data, actor, identifier=None):
         data = {"id": identifier, **data, "created_at": now()}
         db.execute(f"INSERT INTO {kind} ("+",".join(data)+") VALUES("+",".join("?" for _ in data)+")", list(data.values()))
     audit(db, actor, ("Updated " if old else "Created ")+kind, identifier)
-    return require_row(db, kind, identifier)
+    return require_row(db, kind, identifier) if read_back else {"id": identifier, **data}
 
 
 def master_list(kind, q="", page=1, page_size=50, all_records=False):
@@ -61,8 +67,9 @@ def master_list(kind, q="", page=1, page_size=50, all_records=False):
         count = db.execute(f"SELECT COUNT(*) FROM {kind} WHERE {where}",params).fetchone()[0]
         rows = [dict(x) for x in db.execute(f"SELECT * FROM {kind} WHERE {where} ORDER BY name COLLATE NOCASE LIMIT ? OFFSET ?",[*params,page_size,(page-1)*page_size])]
         if kind=="customers":
+            names = Counter(normalized_name(x[0]) for x in db.execute("SELECT name FROM customers"))
             for row in rows:
-                row["duplicate"] = db.execute("SELECT count(*) FROM customers WHERE normalized_name(name)=normalized_name(?) AND id!=?",(row["name"],row["id"])).fetchone()[0]>0
+                row["duplicate"] = names[normalized_name(row["name"])] > 1
     return {"rows":rows,"total":count,"page":page,"page_size":page_size}
 
 
@@ -174,9 +181,12 @@ def save_invoice(payload, actor, identifier=None):
         else:
             values={"id":identifier,**values,"created_at":now()}
             db.execute("INSERT INTO invoices ("+",".join(values)+") VALUES("+",".join("?" for _ in values)+")",list(values.values()))
+        item_ids = {line["item_id"] for line in totals["lines"] if line["item_id"]}
+        if item_ids:
+            found = {r[0] for r in db.execute("SELECT id FROM items WHERE id IN ("+",".join("?" for _ in item_ids)+")", list(item_ids))}
+            if found != item_ids:
+                raise BillingError("Record not found")
         for position,line in enumerate(totals["lines"]):
-            if line["item_id"]:
-                require_row(db,"items",line["item_id"])
             values={"invoice_id":identifier,"position":position,**line}
             db.execute("INSERT INTO invoice_items ("+",".join(values)+") VALUES("+",".join("?" for _ in values)+")",list(values.values()))
         audit(db,actor,"Invoice edited" if old else "Invoice created",identifier,{"number":number,"status":status,"total":totals["total"]})
@@ -278,10 +288,22 @@ def report(kind,start,end):
         base=" FROM invoices i WHERE status NOT IN ('Draft','Cancelled') AND invoice_date BETWEEN ? AND ?"
         aggregates="count(*) AS invoices,coalesce(sum(taxable),0) AS taxable,coalesce(sum(cgst),0) AS cgst,coalesce(sum(sgst),0) AS sgst,coalesce(sum(rounding),0) AS rounding,coalesce(sum(total),0) AS total,coalesce(sum(historical),0) AS historical_invoices"
         summary=dict(db.execute("SELECT "+aggregates+base,(start,end)).fetchone())
-        if kind in {"daily","monthly","customers","gst"}:
-            key={"daily":"invoice_date","monthly":"substr(invoice_date,1,7)","customers":"coalesce(customer_id, normalized_name(json_extract(customer_snapshot,'$.name')) || ':' || coalesce(json_extract(customer_snapshot,'$.place'),''))","gst":"substr(invoice_date,1,7)"}[kind]
-            label="json_extract(customer_snapshot,'$.name')" if kind=="customers" else key
-            rows=[dict(x) for x in db.execute("SELECT "+label+" AS label,"+aggregates+base+" GROUP BY "+key+" ORDER BY "+key,(start,end))]
+        if kind=="customers":
+            # Cloud databases cannot call application-defined SQLite functions.
+            # Keep the original name/place grouping for unlinked legacy records.
+            grouped = {}
+            for invoice in db.execute("SELECT customer_id,customer_snapshot,taxable,cgst,sgst,rounding,total,historical"+base+" ORDER BY id", (start,end)):
+                customer = json.loads(invoice["customer_snapshot"])
+                key = invoice["customer_id"] or normalized_name(customer.get("name"))+":"+str(customer.get("place") or "")
+                row = grouped.setdefault(key, {"label":customer.get("name", ""), "invoices":0, "taxable":0, "cgst":0, "sgst":0, "rounding":0, "total":0, "historical_invoices":0})
+                row["invoices"] += 1
+                for field in ("taxable", "cgst", "sgst", "rounding", "total"):
+                    row[field] += invoice[field]
+                row["historical_invoices"] += invoice["historical"]
+            rows = [grouped[key] for key in sorted(grouped)]
+        elif kind in {"daily","monthly","gst"}:
+            key="invoice_date" if kind=="daily" else "substr(invoice_date,1,7)"
+            rows=[dict(x) for x in db.execute("SELECT "+key+" AS label,"+aggregates+base+" GROUP BY "+key+" ORDER BY "+key,(start,end))]
         elif kind=="outstanding":
             rows=[dict(x) for x in db.execute("SELECT id,number,invoice_date AS date,due_date,json_extract(customer_snapshot,'$.name') AS customer,total,(SELECT coalesce(sum(amount),0) FROM payments WHERE invoice_id=i.id AND voided=0) AS paid"+base+" AND status!='Paid' ORDER BY invoice_date",(start,end))]
             for r in rows:

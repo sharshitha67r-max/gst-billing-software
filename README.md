@@ -2,7 +2,7 @@
 
 An independently rebuilt, single-owner billing app based on the supplied SVS specification and Excel invoice workflow. It does not depend on Emergent hosting or its MongoDB database.
 
-The app includes customer and item masters, keyboard-friendly GST-inclusive invoicing, server-generated A4 PDFs, invoice history, drafts, payments, reports, Excel/CSV imports, Excel exports, backups and an audit log. It uses a FastAPI server, a modular browser interface with no build step, and SQLite on a persistent disk. Monetary amounts are stored as integer paise and calculated with Python `Decimal`.
+The app includes customer and item masters, keyboard-friendly GST-inclusive invoicing, server-generated A4 PDFs, invoice history, drafts, payments, reports, Excel/CSV imports, Excel exports, backups and an audit log. It uses a FastAPI server, a modular browser interface with no build step, and either local SQLite or a remote Turso/libSQL database. Monetary amounts are stored as integer paise and calculated with Python `Decimal`.
 
 ## Run locally
 
@@ -20,11 +20,11 @@ The owner command asks for your email and a password privately. Use the agreed o
 
 ## Cloud deployment
 
-The repository includes a Dockerfile and a Render Blueprint with a persistent disk. Read [the deployment guide](docs/DEPLOYMENT.md) before deploying. The Render Blueprint provisions paid resources; review the provider's displayed charges yourself.
+The repository includes a Dockerfile and a free Render Blueprint that connects to a separately provisioned Turso/libSQL database. Read [the deployment guide](docs/DEPLOYMENT.md) before deploying. Both services have free quotas; monitor usage and leave paid upgrades and overages disabled.
 
 [Deploy with Render](https://render.com/deploy?repo=https://github.com/sharshitha67r-max/svs-enterprises)
 
-Configure `OWNER_EMAIL` and `OWNER_PASSWORD` privately in the host's environment. Use HTTPS and `APP_ENV=production`. Persist `DATA_DIR`; keep one service instance and one application worker. GitHub Pages and ephemeral/serverless filesystems cannot run this database-backed app.
+Configure `DB_BACKEND=turso`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `OWNER_EMAIL` and `OWNER_PASSWORD` privately in the host's environment. Use HTTPS and `APP_ENV=production`. Keep one service instance and one application worker. With Turso, all business records, owner credentials and sessions live in the remote database; Render's temporary filesystem is not used for them. Local SQLite remains available for local use or a host with a persistent disk.
 
 ## Load the private initial data
 
@@ -89,4 +89,4 @@ python -m backend.manage backup /private/location/svs.sqlite3
 python -m backend.manage restore /private/location/svs-backup.json
 ```
 
-JSON business backups exclude passwords and sessions. Full SQLite backups contain password hashes and must be stored privately. Environment templates contain no real credentials.
+JSON business backups exclude passwords and sessions. Full SQLite backups work with either backend, contain password hashes and must be stored privately. For a Turso restore, run the management command on a private computer and provide `--recovery-file /private/location/before-restore.sqlite3`. Stop the web service during a restore. Environment templates contain no real credentials.

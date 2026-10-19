@@ -183,6 +183,11 @@ def commit_import(preview_id,selected,actor):
         preview=json.loads(saved[0]);count=0
         if not selected:
             raise BillingError("Select at least one valid row to import")
+        business_snapshot = json.dumps(settings(db))
+        customers_by_name = {}
+        if preview["kind"]=="orders":
+            for customer in db.execute("SELECT * FROM customers"):
+                customers_by_name.setdefault(customer["name"].strip().lower(), []).append(dict(customer))
         for i in sorted(set(selected)):
             if i<0 or i>=len(preview["records"]):
                 raise BillingError("Invalid selected row")
@@ -191,13 +196,13 @@ def commit_import(preview_id,selected,actor):
                 raise BillingError("Incomplete rows cannot be imported")
             data=record["data"]
             if preview["kind"] in {"customers","items"}:
-                save_master(db,preview["kind"],data.copy(),actor)
+                save_master(db,preview["kind"],data.copy(),actor,read_back=False)
             else:
                 identifier=str(uuid.uuid4())
                 # Only link an unambiguous existing master; never automatically merge names.
-                matches=db.execute("SELECT * FROM customers WHERE lower(trim(name))=lower(trim(?))",(data["name"],)).fetchall()
+                matches=customers_by_name.get(data["name"].strip().lower(), [])
                 customer=dict(matches[0]) if len(matches)==1 else {"name":data["name"],"place":data["place"]}
-                values={"id":identifier,"number":data["number"],"invoice_date":data["invoice_date"],"customer_id":customer.get("id"),"customer_snapshot":json.dumps(customer),"business_snapshot":json.dumps(settings(db)),"status":"Unpaid","taxable":0,"cgst":0,"sgst":0,"rounding":0,"total":data["total"],"terms":"","notes":"Historical total-only import. Tax and payment history were not supplied.","tax_groups":"[]","historical":1,"created_at":now(),"updated_at":now()}
+                values={"id":identifier,"number":data["number"],"invoice_date":data["invoice_date"],"customer_id":customer.get("id"),"customer_snapshot":json.dumps(customer),"business_snapshot":business_snapshot,"status":"Unpaid","taxable":0,"cgst":0,"sgst":0,"rounding":0,"total":data["total"],"terms":"","notes":"Historical total-only import. Tax and payment history were not supplied.","tax_groups":"[]","historical":1,"created_at":now(),"updated_at":now()}
                 db.execute("INSERT INTO invoices ("+",".join(values)+") VALUES("+",".join("?" for _ in values)+")",list(values.values()))
             count+=1
         db.execute("DELETE FROM import_previews WHERE id=?",(preview_id,))

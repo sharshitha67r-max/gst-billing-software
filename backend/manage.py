@@ -4,7 +4,7 @@ import getpass
 import json
 import shutil
 from pathlib import Path
-from .database import initialize, connection, path, audit, now
+from .database import initialize, connection, path, audit, now, backup_to, cloud_config
 from .auth import set_owner
 
 
@@ -13,6 +13,7 @@ def main():
     parser.add_argument("command",choices=["owner","backup","restore"])
     parser.add_argument("file",nargs="?")
     parser.add_argument("--email")
+    parser.add_argument("--recovery-file", help="Private local path for the full pre-restore database backup")
     args=parser.parse_args()
     initialize()
     if args.command=="owner":
@@ -25,10 +26,7 @@ def main():
     elif args.command=="backup":
         if not args.file:
             raise SystemExit("Specify an output path")
-        import sqlite3
-        with connection() as db,sqlite3.connect(args.file) as destination:
-            db.backup(destination)
-        Path(args.file).chmod(0o600)
+        backup_to(args.file)
         print("Database backup written. Store this file privately.")
     else:
         if not args.file:
@@ -37,11 +35,10 @@ def main():
         from .main import BACKUP_TABLES
         if data.get("format")!="svs-billing-backup" or data.get("version")!=1 or set(data.get("tables",{}))!=set(BACKUP_TABLES):
             raise SystemExit("Unsupported backup format")
-        import sqlite3
-        recovery=path().with_name("before-restore.sqlite3")
-        with connection() as db,sqlite3.connect(recovery) as destination:
-            db.backup(destination)
-        recovery.chmod(0o600)
+        if cloud_config() and not args.recovery_file:
+            raise SystemExit("For Turso, run restore from a private computer and provide --recovery-file /private/before-restore.sqlite3")
+        recovery=Path(args.recovery_file) if args.recovery_file else path().with_name("before-restore.sqlite3")
+        backup_to(recovery)
         with connection(True) as db:
             for table in reversed(BACKUP_TABLES):
                 db.execute("DELETE FROM "+table)
@@ -56,7 +53,7 @@ def main():
             db.execute("DELETE FROM sessions")
             db.execute("DELETE FROM import_previews")
             audit(db,"Owner CLI","Backup restored",details={"time":now()})
-        print("Backup restored. Previous database is saved as before-restore.sqlite3. Owner credentials were preserved.")
+        print(f"Backup restored. Previous database is saved as {recovery}. Owner credentials were preserved.")
 
 
 if __name__=="__main__":
