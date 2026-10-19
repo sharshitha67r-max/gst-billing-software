@@ -5,8 +5,8 @@ Checked on 19 October 2026.
 ## Automated checks
 
 - 53 Python checks passed, including the billing suite against local SQLite and the official remote driver through a SQLite-backed Hrana v3 protocol peer.
-- Three JavaScript date checks passed, covering day/month order, leap years, invalid dates, optional dates and explicit date-entry formatting.
-- All five frontend JavaScript modules passed Node syntax checks.
+- Five JavaScript date/calendar checks passed, covering day/month order, leap years, invalid dates, optional dates, calendar month boundaries and explicit date-entry formatting.
+- All six frontend JavaScript modules passed Node syntax checks.
 - `pip check` reported no broken installed dependencies.
 
 The tests cover the six-line 17,835.00 workbook calculation, invalid financial inputs, authentication and persistent sign-in throttling, CSRF and origin rejection, drafts, invoice snapshots, stale-edit rejection, concurrent invoice numbering, financial-year resets, payment idempotency/overpayment/editing/voiding, cancellation, separate real discounts, import previews/duplicate names/header-like items, historical tax handling, multi-page PDFs, safe spreadsheet exports, credential-free business backups, initial-data confirmation and pagination.
@@ -36,8 +36,11 @@ Dates are entered and displayed as dd/mm/yyyy; internal records and APIs retain 
 
 Customers and items can be deleted from their edit dialogs after confirmation. Deletion is owner-only and requires CSRF, same-origin checks and an explicit confirmation payload. Related invoice master links are detached transactionally while retaining invoice snapshots, descriptions, quantities, tax, totals and receipts. Affected invoice versions advance to reject stale editors. Automated checks verify that linked invoices still render, report and edit correctly after master deletion, and that invalid or unauthenticated deletions leave records intact.
 
-## Cloud database verification
+## Sidebar and calendar controls
 
+The sidebar can be collapsed fully or expanded from the header without rerendering the invoice editor. Its choice is stored in this browser and was verified in a new tab. Navigation links show names only. Local browser checks verified that typed invoice descriptions survive collapse/expand and that invoice-date and due-date calendar selections populate dd/mm/yyyy values. The calendar popup was visually inspected; month selection, selected-day feedback and closing after selection were checked. Five date/calendar tests and the 53 Python checks passed. Updated asset URLs and revalidation prevent old sidebar code from being mixed with new date controls after deployment.
+
+## Cloud database verification
 The tests exercise write batching, dependent-step cancellation and atomic rollback on a constraint conflict; persistence across new remote connections; rejection of an expired transaction before any write can fall through to autocommit; network failures without retries; rejection of plaintext credential transport; private full backups; and Secure cookies/HSTS on Render. Incomplete Turso credentials fail closed without creating a local database. The same invoice, payment, reporting, import and PDF scenarios run through both database backends.
 
 The original Docker build completed successfully on Render. The current Free instance was checked before migration: the business workspace was empty, and a private JSON backup was downloaded before changing the deployment. Turso libSQL was created in the same Ohio region as the app. Database credentials are stored only in Render secrets. The Turso update deployed successfully on Render (commit `3178018`). The live health endpoint returned 200 with HSTS enabled. The approved initial package loaded successfully into the new remote database; its downloaded business backup was compared record-for-record with the source package. All 101 customers, 136 items and 327 historical invoices matched, including totals, snapshots and unpaid status. The next starting invoice number was advanced beyond the largest imported number. The business backup contains no authentication tables or database tokens.

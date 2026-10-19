@@ -1,5 +1,10 @@
-import { displayDate, parseDate } from "./dates.js";
-export { displayDate, displayDateTime, reportDate } from "./dates.js";
+import { displayDate, parseDate } from "./dates.js?v=20261019-sidebar-calendar";
+import { bindCalendar } from "./calendar.js?v=20261019-sidebar-calendar";
+export {
+  displayDate,
+  displayDateTime,
+  reportDate,
+} from "./dates.js?v=20261019-sidebar-calendar";
 
 export const state = {
   owner: null,
@@ -37,9 +42,12 @@ export const today = () =>
 export function dateInput(
   name,
   value = "",
-  { id = "", label = "", required = false } = {},
+  { id = "", label = "", required = false, calendar = false } = {},
 ) {
-  return `<input type="text" class="date-input" data-date inputmode="numeric" name="${esc(name)}" ${id ? `id="${esc(id)}"` : ""} ${label ? `aria-label="${esc(label)}"` : ""} value="${value ? esc(displayDate(value)) : ""}" placeholder="dd/mm/yyyy" maxlength="10" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" title="dd/mm/yyyy" ${required ? "required" : ""}>`;
+  const input = `<input type="text" class="date-input" data-date inputmode="numeric" name="${esc(name)}" ${id ? `id="${esc(id)}"` : ""} ${label ? `aria-label="${esc(label)}"` : ""} value="${value ? esc(displayDate(value)) : ""}" placeholder="dd/mm/yyyy" maxlength="10" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" title="dd/mm/yyyy" ${required ? "required" : ""}>`;
+  return calendar
+    ? `<span class="date-control">${input}<button type="button" class="calendar-trigger" data-calendar aria-label="Open ${esc(label || "date")} calendar" title="Choose date" aria-haspopup="dialog" aria-expanded="false">${icon("calendar")}</button></span>`
+    : input;
 }
 export function dateValue(input) {
   try {
@@ -60,6 +68,10 @@ export function bindDates(parent, onValidInput = null) {
         onValidInput?.();
       } catch {}
     });
+    const button = input
+      .closest(".date-control")
+      ?.querySelector("[data-calendar]");
+    if (button) bindCalendar(input, button, today);
   });
 }
 export const debounce = (fn, ms = 230) => {
@@ -70,11 +82,11 @@ export const debounce = (fn, ms = 230) => {
   };
 };
 export const icon = (name) =>
-  `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${{ dashboard: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>', invoice: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h7M9 16h7"/>', plus: '<path d="M12 5v14M5 12h14"/>', history: '<path d="M3 11a9 9 0 1 1 2 7M3 4v7h7M12 7v6l4 2"/>', customers: '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M17 15a5 5 0 0 1 4 5"/>', items: '<path d="M12 3 3 8v9l9 5 9-5V8zM3 8l9 5 9-5M12 13v9M7 5.5l9 5"/>', payments: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M6 15h4"/>', reports: '<path d="M4 20V4M4 20h17M9 16v-5M14 16V7M19 16v-8"/>', settings: '<path d="m10 3-1 3-3 1-3 3 2 3-1 3 3 3 3-1 3 2 3-2 3 1 2-3-1-3 1-3-3-2-2-2z"/><circle cx="12" cy="12" r="3"/>', backup: '<path d="M5 16a5 5 0 0 1 1-10 7 7 0 0 1 13 2 4 4 0 0 1 0 8M12 11v10M8 17l4 4 4-4"/>', search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>', arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>', lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>', download: '<path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/>', print: '<path d="M7 8V3h10v5M7 17H3V9h18v8h-4M7 14h10v7H7zM17 11h1"/>', edit: '<path d="m16 3 5 5-12 12-6 1 1-6zM14 5l5 5"/>', close: '<path d="m6 6 12 12M6 18 18 6"/>', copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>', check: '<path d="m5 12 4 4L20 5"/>', reminders: '<path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4M12 2v2"/>', logout: '<path d="M9 4H4v16h5M12 12h9m-4-4 4 4-4 4"/>', upload: '<path d="M12 16V3M7 8l5-5 5 5M4 16v5h16v-5"/>', audit: '<path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/>', rupee: '<path d="M7 4h11M7 8h11M7 4c8 0 8 8 0 8l9 9"/>' }[name] || '<circle cx="12" cy="12" r="8"/>'}</svg>`;
+  `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${{ calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18M8 15h2M14 15h2M8 18h2"/>', panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M13 9l3 3-3 3"/>', dashboard: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>', invoice: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h7M9 16h7"/>', plus: '<path d="M12 5v14M5 12h14"/>', history: '<path d="M3 11a9 9 0 1 1 2 7M3 4v7h7M12 7v6l4 2"/>', customers: '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M17 15a5 5 0 0 1 4 5"/>', items: '<path d="M12 3 3 8v9l9 5 9-5V8zM3 8l9 5 9-5M12 13v9M7 5.5l9 5"/>', payments: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M6 15h4"/>', reports: '<path d="M4 20V4M4 20h17M9 16v-5M14 16V7M19 16v-8"/>', settings: '<path d="m10 3-1 3-3 1-3 3 2 3-1 3 3 3 3-1 3 2 3-2 3 1 2-3-1-3 1-3-3-2-2-2z"/><circle cx="12" cy="12" r="3"/>', backup: '<path d="M5 16a5 5 0 0 1 1-10 7 7 0 0 1 13 2 4 4 0 0 1 0 8M12 11v10M8 17l4 4 4-4"/>', search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>', arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>', lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>', download: '<path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/>', print: '<path d="M7 8V3h10v5M7 17H3V9h18v8h-4M7 14h10v7H7zM17 11h1"/>', edit: '<path d="m16 3 5 5-12 12-6 1 1-6zM14 5l5 5"/>', close: '<path d="m6 6 12 12M6 18 18 6"/>', copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>', check: '<path d="m5 12 4 4L20 5"/>', reminders: '<path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4M12 2v2"/>', logout: '<path d="M9 4H4v16h5M12 12h9m-4-4 4 4-4 4"/>', upload: '<path d="M12 16V3M7 8l5-5 5 5M4 16v5h16v-5"/>', audit: '<path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/>', rupee: '<path d="M7 4h11M7 8h11M7 4c8 0 8 8 0 8l9 9"/>' }[name] || '<circle cx="12" cy="12" r="8"/>'}</svg>`;
 export const badge = (status) =>
   `<span class="badge ${esc(status.toLowerCase().replaceAll(" ", "-"))}">${esc(status)}</span>`;
 export const field = (label, name, value = "", options = {}) =>
-  `<label class="field ${options.full ? "span-two" : ""}"><span>${esc(label)}</span>${options.type === "date" ? dateInput(name, value, { label, required: options.required }) : options.textarea ? `<textarea name="${name}" ${options.required ? "required" : ""} maxlength="${options.max || 3000}">${esc(value)}</textarea>` : `<input name="${name}" type="${options.type || "text"}" value="${esc(value)}" ${options.required ? "required" : ""} ${options.step ? 'step="' + options.step + '"' : ""} ${options.min !== undefined ? 'min="' + options.min + '"' : ""} maxlength="${options.max || 500}" ${options.placeholder ? 'placeholder="' + esc(options.placeholder) + '"' : ""} ${options.autocomplete ? 'autocomplete="' + options.autocomplete + '"' : ""}>`}${options.help ? `<p class="help">${esc(options.help)}</p>` : ""}</label>`;
+  `<${options.type === "date" ? "div" : "label"} class="field ${options.full ? "span-two" : ""}"><span>${esc(label)}</span>${options.type === "date" ? dateInput(name, value, { label, required: options.required, calendar: options.calendar }) : options.textarea ? `<textarea name="${name}" ${options.required ? "required" : ""} maxlength="${options.max || 3000}">${esc(value)}</textarea>` : `<input name="${name}" type="${options.type || "text"}" value="${esc(value)}" ${options.required ? "required" : ""} ${options.step ? 'step="' + options.step + '"' : ""} ${options.min !== undefined ? 'min="' + options.min + '"' : ""} maxlength="${options.max || 500}" ${options.placeholder ? 'placeholder="' + esc(options.placeholder) + '"' : ""} ${options.autocomplete ? 'autocomplete="' + options.autocomplete + '"' : ""}>`}${options.help ? `<p class="help">${esc(options.help)}</p>` : ""}</${options.type === "date" ? "div" : "label"}>`;
 export const pageHeader = (
   title,
   subtitle,

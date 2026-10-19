@@ -70,6 +70,8 @@ async def security(request,call_next):
     response.headers["Content-Security-Policy"]="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"]="no-store"
+    elif request.url.path.startswith("/assets/"):
+        response.headers["Cache-Control"]="no-cache"
     if auth.production():
         response.headers["Strict-Transport-Security"]="max-age=31536000; includeSubDomains"
     return response

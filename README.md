@@ -41,6 +41,8 @@ The prepared migration keeps duplicate customer names separate, leaves product s
 
 ## Invoice workflow
 
+Use the panel button at the top left to collapse or expand the sidebar. This browser remembers your choice. The menu shows section names without shortcut labels. Invoice-date and payment-due fields have calendar buttons and continue to accept dd/mm/yyyy typing.
+
 Select a customer, search/select a product or enter a custom description, enter quantity and the GST-inclusive rate, then save or save and print. Defaults can be set in the Item Master. Numbers embedded in product names are not interpreted as prices.
 
 | Shortcut | Action |

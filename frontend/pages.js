@@ -26,7 +26,7 @@ import {
   formData,
   invoiceTable,
   printInvoice,
-} from "./core.js";
+} from "./core.js?v=20261019-sidebar-calendar";
 
 const newButton = (label, action, id) =>
   `<button class="primary" ${id ? 'id="' + id + '"' : ""} ${action ? 'data-action="' + action + '"' : ""}>${icon("plus")}${label}</button>`;

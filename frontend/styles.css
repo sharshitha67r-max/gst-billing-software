@@ -183,11 +183,6 @@ button:hover {
   background: #285046;
   box-shadow: inset 2px 0 #65bca4;
 }
-.nav-link kbd {
-  margin-left: auto;
-  color: #7d9d91;
-  font: 9px inherit;
-}
 .sidebar-footer {
   margin-top: auto;
   border-top: 1px solid #345147;
@@ -1284,8 +1279,7 @@ dialog::backdrop {
     gap: 5px;
   }
   .nav-label,
-  .sidebar-footer,
-  .nav-link kbd {
+  .sidebar-footer {
     display: none;
   }
   .nav-link {
@@ -1438,4 +1432,114 @@ dialog::backdrop {
   }
 }
 
-.delete-master { margin-right: auto; }
+.delete-master {
+  margin-right: auto;
+}
+
+.topbar-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.sidebar-toggle {
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  flex-shrink: 0;
+}
+.layout.sidebar-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+.sidebar-collapsed .sidebar {
+  display: none;
+}
+.field > .date-control {
+  display: block;
+  position: relative;
+  margin: 0;
+  text-transform: none;
+  font-size: inherit;
+  font-weight: normal;
+  letter-spacing: normal;
+  color: inherit;
+}
+.date-control .date-input {
+  padding-right: 42px;
+}
+.calendar-trigger {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  bottom: 3px;
+  width: 35px;
+  padding: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+}
+.date-calendar {
+  position: fixed;
+  z-index: 1000;
+  width: 306px;
+  max-width: calc(100vw - 24px);
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 12px 36px #183d3026;
+  font-size: 12px;
+}
+.calendar-heading {
+  display: grid;
+  grid-template-columns: 29px minmax(0, 1fr) 76px 29px;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+.calendar-heading button,
+.calendar-heading select {
+  padding: 5px;
+  min-width: 0;
+  font-size: 12px;
+}
+.calendar-heading button {
+  font-size: 20px;
+}
+.calendar-weekdays,
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  text-align: center;
+}
+.calendar-weekdays {
+  margin-bottom: 6px;
+  color: #708075;
+  font-size: 10px;
+}
+.calendar-days button {
+  min-height: 32px;
+  justify-content: center;
+  padding: 5px 0;
+  border: 0;
+  font-size: 12px;
+}
+.calendar-days .calendar-today {
+  box-shadow: inset 0 0 0 1px #75a894;
+}
+.calendar-days button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--teal);
+}
+.calendar-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.calendar-footer button {
+  padding: 5px 8px;
+  font-size: 11px;
+}

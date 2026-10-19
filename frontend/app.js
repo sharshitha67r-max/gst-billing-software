@@ -1,4 +1,13 @@
-import { state, $, $$, esc, icon, api, toast, empty } from "./core.js";
+import {
+  state,
+  $,
+  $$,
+  esc,
+  icon,
+  api,
+  toast,
+  empty,
+} from "./core.js?v=20261019-sidebar-calendar";
 import {
   dashboard,
   masters,
@@ -13,8 +22,12 @@ import {
   backupInitialization,
   auditPage,
   reminders,
-} from "./pages.js";
-import { invoiceEditor, clearBrowserDraft } from "./invoice.js";
+} from "./pages.js?v=20261019-sidebar-calendar";
+import {
+  invoiceEditor,
+  clearBrowserDraft,
+} from "./invoice.js?v=20261019-sidebar-calendar";
+import { closeCalendar } from "./calendar.js?v=20261019-sidebar-calendar";
 
 const routes = [
   ["dashboard", "Dashboard", "/", "D"],
@@ -30,6 +43,11 @@ const routes = [
   ["settings", "Settings", "/settings", ""],
 ];
 let routing = 0;
+let sidebarCollapsed = false;
+try {
+  sidebarCollapsed =
+    localStorage.getItem("svs.sidebar.collapsed.v1") === "true";
+} catch {}
 
 async function navigate(path, { replace = false, skipGuard = false } = {}) {
   if (!skipGuard && state.guard && !(await state.guard())) return;
@@ -52,7 +70,25 @@ function shell() {
       ? routes[2]
       : routes.find((r) => path.startsWith(r[2]) && r[2] !== "/"));
   $("#app").innerHTML =
-    `<div class="layout"><aside class="sidebar"><div class="brand"><div class="brand-mark">S</div><div><strong>SVS ENTERPRISES</strong><small>GST BILLING</small></div></div><nav aria-label="Main navigation"><div class="nav-label">Workspace</div>${routes.map((r, i) => `${i === 5 ? '<div class="nav-label">Masters & insights</div>' : i === 9 ? '<div class="nav-label">Administration</div>' : ""}<a href="${r[2]}" class="nav-link ${r === active ? "active" : ""}" ${r === active ? 'aria-current="page"' : ""}>${icon(r[0])}<span>${r[1]}</span>${r[3] ? "<kbd>Alt " + r[3] + "</kbd>" : ""}</a>`).join("")}</nav><div class="sidebar-footer"><div class="owner-indicator"><span class="dot"></span>Owner workspace</div><div>GST-inclusive billing · INR</div><div>${esc([state.settings.city, state.settings.state].filter(Boolean).join(", "))}</div></div></aside><div class="workspace"><header class="topbar"><div class="crumb">SVS Enterprises<span>/</span><strong>${esc(active?.[1] || "Workspace")}</strong></div><div class="account"><span class="owner-email">${esc(state.owner.email)}</span><span class="avatar">SV</span><button id="logout" class="quiet small" aria-label="Sign out">${icon("logout")}Sign out</button></div></header><main class="content" id="main-content"><div class="loading">Loading workspace…</div></main></div>`;
+    `<div class="layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}"><aside id="workspace-sidebar" class="sidebar" ${sidebarCollapsed ? 'inert aria-hidden="true"' : ""}><div class="brand"><div class="brand-mark">S</div><div><strong>SVS ENTERPRISES</strong><small>GST BILLING</small></div></div><nav aria-label="Main navigation"><div class="nav-label">Workspace</div>${routes.map((r, i) => `${i === 5 ? '<div class="nav-label">Masters & insights</div>' : i === 9 ? '<div class="nav-label">Administration</div>' : ""}<a href="${r[2]}" class="nav-link ${r === active ? "active" : ""}" ${r === active ? 'aria-current="page"' : ""}>${r[1]}</a>`).join("")}</nav><div class="sidebar-footer"><div class="owner-indicator"><span class="dot"></span>Owner workspace</div><div>GST-inclusive billing · INR</div><div>${esc([state.settings.city, state.settings.state].filter(Boolean).join(", "))}</div></div></aside><div class="workspace"><header class="topbar"><div class="topbar-start"><button id="sidebar-toggle" class="quiet sidebar-toggle" type="button" aria-controls="workspace-sidebar" aria-expanded="${!sidebarCollapsed}" aria-label="${sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}" title="${sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}">${icon("panel")}</button><div class="crumb">SVS Enterprises<span>/</span><strong>${esc(active?.[1] || "Workspace")}</strong></div></div><div class="account"><span class="owner-email">${esc(state.owner.email)}</span><span class="avatar">SV</span><button id="logout" class="quiet small" aria-label="Sign out">${icon("logout")}Sign out</button></div></header><main class="content" id="main-content"><div class="loading">Loading workspace…</div></main></div>`;
+  $("#sidebar-toggle").onclick = () => {
+    sidebarCollapsed = !sidebarCollapsed;
+    $(".layout").classList.toggle("sidebar-collapsed", sidebarCollapsed);
+    const sidebar = $("#workspace-sidebar");
+    sidebar.inert = sidebarCollapsed;
+    sidebar.setAttribute("aria-hidden", String(sidebarCollapsed));
+    const button = $("#sidebar-toggle");
+    const label = sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar";
+    button.setAttribute("aria-expanded", String(!sidebarCollapsed));
+    button.setAttribute("aria-label", label);
+    button.title = label;
+    try {
+      localStorage.setItem(
+        "svs.sidebar.collapsed.v1",
+        String(sidebarCollapsed),
+      );
+    } catch {}
+  };
   $("#logout").onclick = async () => {
     if (state.guard && !(await state.guard())) return;
     try {
@@ -71,6 +107,7 @@ function shell() {
 }
 
 async function render() {
+  closeCalendar();
   const route = ++routing;
   if (!state.owner) return loginScreen();
   const root = shell();
@@ -111,6 +148,7 @@ async function render() {
 }
 
 async function loginScreen() {
+  closeCalendar();
   state.dispose?.();
   state.dispose = null;
   state.guard = null;
