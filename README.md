@@ -1,6 +1,6 @@
-# SVS Enterprises Billing
+# GST Billing Software
 
-An independently rebuilt, single-owner billing app based on the supplied SVS specification and Excel invoice workflow. It does not depend on Emergent hosting or its MongoDB database.
+An independently rebuilt, single-owner billing app based on the supplied enterprise specification and Excel invoice workflow. 
 
 The app includes customer and item masters, keyboard-friendly GST-inclusive invoicing, server-generated A4 PDFs, invoice history, drafts, payments, reports, Excel/CSV imports, Excel exports, backups and an audit log. It uses a FastAPI server, a modular browser interface with no build step, and either local SQLite or a remote Turso/libSQL database. Monetary amounts are stored as integer paise and calculated with Python `Decimal`.
 
@@ -16,7 +16,7 @@ python -m backend.manage owner
 uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-The owner command asks for your email and a password privately. Use the agreed owner email when setting up the real deployment. Open <http://127.0.0.1:8000>. No default password, public registration or demo data is included.
+The owner command asks for your email and a password privately. Use the agreed owner email when setting up the real deployment. No default password, public registration or demo data is included.
 
 ## Cloud deployment
 
